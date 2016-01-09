@@ -6,7 +6,7 @@ Playing with coroutines on events.
 
 * Linux 2.6.27+
 * glibc 2.9+
-* gcc
+* gcc 4.1.2+
 
 ## Development
 

@@ -1,10 +1,8 @@
-// Linux 2.6.27+, glibc 2.9+
-
+#include <assert.h>
 #include <errno.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <sys/epoll.h>
-#include <sys/eventfd.h>
 #include <unistd.h>
 
 #include "ibevent.h"
@@ -12,19 +10,24 @@
 #include "util.h"
 
 #define MAX_EVENTS (16)
+#define CONTROL_RING_BITS (8)
 
-static int control_fd;
-static struct ibevent control_event;
+int ib_epoll_fd;
 
-static void control_handler(struct ibevent *event) {
-  uint64_t data;
-  int ret;
+struct control_ring {
+  struct ring ring;
+  void *data[1 << CONTROL_RING_BITS];
+};
 
-  while ((ret = read(control_fd, &data, sizeof(data))) >= 0) {
-    CHECK(ret == sizeof(data));
-    // TODO(iceboy): read from ring buffer
+static struct control_ring control_ring;
+
+static void control_handler(struct ring *ring, int num) {
+  void *data;
+
+  while (num--) {
+    data = ring_read(ring);
+    printf("%d\n", (int)(intptr_t)data);
   }
-  CHECK(errno == EAGAIN);
 }
 
 static void *worker(void *id_ptr) {
@@ -49,16 +52,16 @@ static void *worker(void *id_ptr) {
     }
     printf("[%d] Event handling completed.\n", id);
   }
+
+  assert(0);
 }
 
 void ibinit(void) {
-  struct epoll_event event;
   ib_epoll_fd = epoll_create1(EPOLL_CLOEXEC);
-  control_fd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
-  control_event.in_handler = control_handler;
-  event.events = EPOLLIN | EPOLLET;
-  event.data.ptr = &control_event;
-  CHECK_ZERO(epoll_ctl(ib_epoll_fd, EPOLL_CTL_ADD, control_fd, &event))
+  ring_init(&control_ring.ring, control_handler, CONTROL_RING_BITS);
+  for (int i = 0; i < 10; ++i) {
+    ring_write(&control_ring.ring, (void *)(intptr_t)i);
+  }
 }
 
 // TODO(iceboy): Create worker threads according to CPU cores and app settings.
