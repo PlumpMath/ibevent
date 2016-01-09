@@ -1,12 +1,10 @@
 # ibevent
 
-Playing with coroutines on events.
+Playing with networking on coroutines.
 
 ## Prerequisites
 
-* Linux 2.6.27+
-* glibc 2.9+
-* gcc 4.1.2+
+* boost
 
 ## Development
 
