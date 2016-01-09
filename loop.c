@@ -2,6 +2,7 @@
 #include <errno.h>
 #include <pthread.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/epoll.h>
 #include <unistd.h>
 
@@ -10,23 +11,40 @@
 #include "util.h"
 
 #define MAX_EVENTS (16)
-#define CONTROL_RING_BITS (8)
+#define GO_RING_BITS (8)
+#define GO_STACK_SIZE (16384)
 
 int ib_epoll_fd;
 
-struct control_ring {
+struct go_ring {
   struct ring ring;
-  void *data[1 << CONTROL_RING_BITS];
+  void *data[1 << GO_RING_BITS];
 };
 
-static struct control_ring control_ring;
+static struct go_ring go_ring;
 
-static void control_handler(struct ring *ring, int num) {
-  void *data;
+struct go_stack {
+  union {
+    uint8_t stack[GO_STACK_SIZE];
+    void (*func)();
+  };
+};
+
+static void go_handler(struct ring *ring, int num) {
+  struct go_stack *stack;
+  ucontext_t uc, ouc;
+  getcontext(&uc);
 
   while (num--) {
-    data = ring_read(ring);
-    printf("%d\n", (int)(intptr_t)data);
+    stack = ring_read(ring);
+    // TODO(iceboy): serious scalability problem here...
+    uc.uc_stack.ss_sp = stack->stack;
+    uc.uc_stack.ss_flags = 0;
+    uc.uc_stack.ss_size = sizeof(struct go_stack);
+    uc.uc_link = &ouc;
+    makecontext(&uc, stack->func, 0);
+    swapcontext(&ouc, &uc);
+    free(stack);
   }
 }
 
@@ -58,10 +76,15 @@ static void *worker(void *id_ptr) {
 
 void ibinit(void) {
   ib_epoll_fd = epoll_create1(EPOLL_CLOEXEC);
-  ring_init(&control_ring.ring, control_handler, CONTROL_RING_BITS);
-  for (int i = 0; i < 10; ++i) {
-    ring_write(&control_ring.ring, (void *)(intptr_t)i);
-  }
+  ring_init(&go_ring.ring, go_handler, GO_RING_BITS);
+}
+
+// TODO(iceboy): Allow user to pass in context pointers.
+void ibgo(void (*func)(void)) {
+  // TODO(iceboy): Optimize allocator.
+  struct go_stack *stack = malloc(sizeof(struct go_stack));
+  stack->func = func;
+  ring_write(&go_ring.ring, stack);
 }
 
 // TODO(iceboy): Create worker threads according to CPU cores and app settings.
