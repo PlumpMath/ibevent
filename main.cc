@@ -1,20 +1,29 @@
-#include <boost/asio/io_service.hpp>
+#include <boost/asio.hpp>
+#include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/spawn.hpp>
 #include <iostream>
+#include <utility>
 
-void foo(boost::asio::yield_context yield) {
-  std::cout << "It works!" << std::endl;
+using namespace boost::asio;
+using namespace boost::system;
+
+io_service service;
+ip::tcp::acceptor acceptor(service,
+                           ip::tcp::endpoint(ip::tcp::v4(), 7777));
+
+void do_accept(yield_context yield) {
+  while (true) {
+    auto socket = std::make_shared<ip::tcp::socket>(service);
+    acceptor.async_accept(*socket, yield);
+    spawn(service, [=](yield_context yield) {
+      async_write(*socket, buffer("Hello", 5), yield);
+      socket->close();
+    });
+    std::cerr << "Accepted!" << std::endl;
+  }
 }
 
 int main() {
-  try {
-    boost::asio::io_service io_service;
-    boost::asio::spawn(io_service, foo);
-    boost::asio::spawn(io_service, foo);
-    boost::asio::spawn(io_service, foo);
-    boost::asio::spawn(io_service, foo);
-    io_service.run();
-  } catch (std::exception &e) {
-    std::cerr << "FATAL: " << e.what() << std::endl;
-  }
+  spawn(service, do_accept);
+  service.run();
 }
