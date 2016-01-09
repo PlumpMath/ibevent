@@ -6,7 +6,7 @@
 #include <stdlib.h>
 
 #define CHECK_ZERO(val) if (val) { \
-                          fprintf(stderr, "Checked failed at %s:%d\n, errno %d.", \
+                          fprintf(stderr, "Checked failed at %s:%d, errno %d.\n", \
                                   __FILE__, __LINE__, errno); \
                           abort(); \
                         }

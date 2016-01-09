@@ -24,8 +24,7 @@ void ring_init(struct ring *ring,
   ring->handler = handler;
   CHECK((ret = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC)) != -1);
   ring->eventfd = ret;
-  ring->readpos = 0;
-  ring->writepos = 0;
+  ring->writepos = ring->readpos;
   ring->bits = bits;
 
   event.events = EPOLLIN | EPOLLET;
